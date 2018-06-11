@@ -8,6 +8,9 @@
 # * file name   :  apriori.py
 
 
+import itertools
+
+
 min_support = 0.3
 min_confidence = 0.5
 
@@ -80,10 +83,13 @@ def getF1(datas):
     c1 = list(set([item for items in datas for item in items]))
     c1 = [[item] for item in c1]
     f1 = []
+    s1 = []  # 支持度
     for c in c1:
-        if count(c, datas) / float(len(datas)) >= min_support:
+        support = count(c, datas) / float(len(datas))
+        if support >= min_support:
             f1.append(c)
-    return f1
+            s1.append(support)
+    return f1, s1
 
 
 def getFk(fk_1, datas):
@@ -104,17 +110,63 @@ def getFk(fk_1, datas):
 
     # 得到所有的频繁k-1项集
     fk = []
+    sk = []
     for items in ck:
-        if count(items, datas) / float(len(datas)) >= min_support:
+        support = count(items, datas) / float(len(datas))
+        if support >= min_support:
             fk.append(items)
-    return fk
+            sk.append(support)
+    return fk, sk
+
+
+def generate_fk(datas):
+    """
+    生成频繁项集
+    :param datas:
+    :return:
+    """
+    f_s = {}
+    f1, s1 = getF1(datas)
+    for f, s in zip(f1, s1):
+        f_s[frozenset(f)] = s
+    fk, sk = getFk(f1, datas)
+    while fk:
+        for f, s in zip(fk, sk):
+            f_s[frozenset(f)] = s
+        fk, sk = getFk(fk, datas)
+    return f_s
+
+
+def generate_rule(f_s):
+    """
+    由频繁项集生成规则
+    :param f_s:
+    :return:
+    """
+    rules = []
+    for key, value in f_s.items():
+        if len(key) >= 2:
+            rules.extend(rule(key, f_s, []))
+    return rules
+
+
+def rule(items, f_s, cur_rule):
+    for item in itertools.combinations(items, 1):
+        if items - frozenset(item) in f_s.keys() and \
+                f_s[items] / f_s[items - frozenset(item)] >= min_confidence:
+            cur_rule.append((str([items - frozenset(item)]), str(item),
+                             f_s[items] / float(f_s[items - frozenset(item)])))
+            rule(items - frozenset(item), f_s, cur_rule)
+    return cur_rule
 
 
 if __name__ == "__main__":
     datas = loadDataSet("data")
-    f1 = getF1(datas)
-    print(f1)
-    fk = getFk(f1, datas)
-    while len(fk) != 0:
-        print(fk)
-        fk = getFk(fk, datas)
+    f_s = generate_fk(datas)
+    print("频繁项集：{} 个".format(len(f_s)))
+    for key, value in f_s.items():
+        print("{} : {:.2f}".format(key, value))
+    rules = generate_rule(f_s)
+    print("关联规则：{}个".format(len(rules)))
+    for reason, result, conf in rules:
+        print("{} ----> {} : {}".format(reason, result, conf))
